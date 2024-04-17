@@ -132,26 +132,29 @@ const io = require('socket.io')(3000, {
 });
 console.log('Server is up and running on port 3000');
 
-const availableUsers = new Set();
+const userInQueue = new Set();
+const userInGame = new Set();
 // map of user socket id to
 const MAX_QUESTIONS = 2;
 
 io.on('connection', socket => {
     console.log('New user with id: ' + socket.id);
     // Add the user to the set of available users
-    availableUsers.add(socket);
+    userInQueue.add(socket);
     console.log('Available users after adding: ' + availableUsersToString());
 
-    if (availableUsers.size >= 2) {
+    if (userInQueue.size >= 2) {
         // Create a new room for the current user and the first available user
         // and remove them from the available users set
         const currentUser = socket;
         console.log('Current user: ' + currentUser.id);
-        availableUsers.delete(currentUser);
+        userInQueue.delete(currentUser);
+        userInGame.add(currentUser);
         console.log('Available users after removing current user: ' + availableUsersToString());
-        const firstAvailableUser = availableUsers.values().next().value;
+        const firstAvailableUser = userInQueue.values().next().value;
         console.log('First available user: ' + firstAvailableUser.id);
-        availableUsers.delete(firstAvailableUser);
+        userInQueue.delete(firstAvailableUser);
+        userInGame.add(firstAvailableUser);
         console.log('Available users after removing first available user: ' + availableUsersToString());
         const room = currentUser.id + '_' + firstAvailableUser.id;
         console.log('Room: ' + room);
@@ -165,12 +168,18 @@ io.on('connection', socket => {
         console.log('Message: ' + message);
         socket.broadcast.emit('broadcast-message', message);
     });
-    
+
+    socket.on("disconnecting", () => {
+        console.log("disconnecting" + socket.id);
+        console.log("disconnecting" + Array.from(socket.rooms).join(","));
+    });
+
     // Handle disconnection of clients
     socket.on('disconnect', () => {
         console.log('User with id: ' + socket.id + ' disconnected');
-        // Remove the user from the set of available users
-        availableUsers.delete(socket);
+        // list the rooms the user is in
+        let opponent = socket.rooms;
+        console.log('Rooms: ' + Array.from(opponent).join(","));
         console.log('Available users after dlt: ' + availableUsersToString());
     });
 });
@@ -193,6 +202,6 @@ function sendMessageToRoomExceptSender(event, room, message) {
 // function to convert the set of available users to string
 function availableUsersToString(){
     let str = '';
-    availableUsers.forEach(user => str += user.id + ', ');
+    userInQueue.forEach(user => str += user.id + ', ');
     return str;
 } 
