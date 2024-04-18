@@ -132,10 +132,12 @@ const io = require('socket.io')(3000, {
 });
 console.log('Server is up and running on port 3000');
 
-const userInQueue = new Set();
-const userInGame = new Set();
-// map of user socket id to
 const MAX_QUESTIONS = 2;
+const userInQueue = new Set();
+// const userInGame = new Set();
+// create hashmaps to store the user and opponent in a room
+// map of user socket id to
+const userToOpponent = new Map();
 
 io.on('connection', socket => {
     console.log('New user with id: ' + socket.id);
@@ -149,29 +151,45 @@ io.on('connection', socket => {
         const currentUser = socket;
         console.log('Current user: ' + currentUser.id);
         userInQueue.delete(currentUser);
-        userInGame.add(currentUser);
+        // userInGame.add(currentUser);
         console.log('Available users after removing current user: ' + availableUsersToString());
         const firstAvailableUser = userInQueue.values().next().value;
         console.log('First available user: ' + firstAvailableUser.id);
         userInQueue.delete(firstAvailableUser);
-        userInGame.add(firstAvailableUser);
+        // userInGame.add(firstAvailableUser);
         console.log('Available users after removing first available user: ' + availableUsersToString());
         const room = currentUser.id + '_' + firstAvailableUser.id;
         console.log('Room: ' + room);
         socket.join(room);
         firstAvailableUser.join(room);
-        // random value can not be zero
-        sendMessageToRoom("assign-question-id",room, Math.floor(Math.random() * MAX_QUESTIONS + 1));
+        // fill the map of user to opponent
+        userToOpponent.set(currentUser.id, firstAvailableUser.id);
+        userToOpponent.set(firstAvailableUser.id, currentUser.id);
+        // send the question id to the room        
+        sendMessageToRoom("assign-question-id",room, getRandomNumber());
     }
     // Handle messages from clients
-    socket.on('message', message => {
-        console.log('Message: ' + message);
-        socket.broadcast.emit('broadcast-message', message);
+    socket.on('some-test-cases-passed', message => {
+        let opponent = userToOpponent.get(socket.id);
+        sendMessageToUser("opponent-passed-some-test-cases", opponent, message);
+    });
+
+    socket.on('all-test-cases-passed', message => {
+        let opponent = userToOpponent.get(socket.id);
+        sendMessageToUser("opponent-passed-all-test-cases", opponent, "Opponent passed all test cases. You lost");
     });
 
     socket.on("disconnecting", () => {
         console.log("disconnecting" + socket.id);
-        console.log("disconnecting" + Array.from(socket.rooms).join(","));
+        let opponent = userToOpponent.get(socket.id);
+        if (userInQueue.has(socket)) {
+            userInQueue.delete(socket);
+        }
+        console.log('Opponent1: ' + opponent);
+        // send message to the opponent that the user has disconnected
+        if (opponent) {
+            sendMessageToUser("opponent-disconnected", opponent, "Opponent disconnected");
+        }
     });
 
     // Handle disconnection of clients
@@ -179,7 +197,7 @@ io.on('connection', socket => {
         console.log('User with id: ' + socket.id + ' disconnected');
         // list the rooms the user is in
         let opponent = socket.rooms;
-        console.log('Rooms: ' + Array.from(opponent).join(","));
+        console.log('Rooms: ' + Array.from(socket.rooms).join(","));
         console.log('Available users after dlt: ' + availableUsersToString());
     });
 });
@@ -198,10 +216,14 @@ function sendMessageToRoomExceptSender(event, room, message) {
     socket.to(room).emit(event, message);
 }
 
-
 // function to convert the set of available users to string
 function availableUsersToString(){
     let str = '';
     userInQueue.forEach(user => str += user.id + ', ');
     return str;
 } 
+
+// function to get random number between 1 and MAX_QUESTIONS
+function getRandomNumber() {
+    return Math.floor(Math.random() * MAX_QUESTIONS + 1);
+}
